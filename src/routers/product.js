@@ -1,120 +1,68 @@
 const express = require("express");
 const router = new express.Router();
-const mongoose = require("mongoose");
-const Product = require("../models/Product");
 const { isAdmin } = require("../middleware/auth");
+const multer = require("multer");
+const sharp = require("sharp");
+const productController = require("../controllers/product-controller");
 
 // Create Product
-router.post("/products", isAdmin, async (req, res) => {
-  const product = new Product(req.body);
-  try {
-    await product.save();
-    res.status(201).send(product);
-  } catch (e) {
-    res.status(400).send(e);
-  }
-});
+router.post("/products", isAdmin, productController.addProduct);
 
 // Search All Products
 
-router.get("/products", async (req, res) => {
-  try {
-    const product = await Product.find({});
-    res.send(product);
-  } catch (e) {
-    res.status(500).send(e);
-  }
-});
+router.get("/products", productController.searchProducts);
 
 // Search by Product Id
-router.get("/products/:id", async (req, res) => {
-  const _id = req.params.id;
+router.get("/products/:id", productController.searchProductId);
 
-  try {
-    const product = await Product.findById(_id);
-
-    if (!product) {
-      return res.status(404).send(e);
-    }
-
-    res.send(product);
-  } catch (e) {
-    res.status(500).send(e);
-  }
-});
 // Search Product By status
-router.get("/search/:key", async (req, res) => {
-  try {
-    const product = await Product.find({
-      $or: [
-        {
-          title: { $regex: req.params.key },
-        },
-        {
-          categories: { $regex: req.params.key },
-        },
-      ],
-    });
-    if (!product) {
-      res.status(404).send(e);
-    }
-
-    res.send(product);
-  } catch (e) {
-    res.status(404).send(e);
-  }
-});
+router.get("/search/:key", productController.searchProductStatus);
 
 // Update Product
 
-router.patch("/products/:id", isAdmin, async (req, res) => {
-  const updates = Object.keys(req.body);
-  const allowedUpdates = [
-    "title",
-    "desc",
-    "categories",
-    "size",
-    "color",
-    "price",
-  ];
-  const isValidOperation = updates.every((update) =>
-    allowedUpdates.includes(update)
-  );
-
-  if (!isValidOperation) {
-    return res.status(400).send({ error: "Invalid updates!" });
-  }
-
-  try {
-    const product = await Product.findById(req.params.id);
-
-    updates.forEach((update) => (product[update] = req.body[update]));
-    await product.save();
-
-    if (!product) {
-      return res.status(404).send();
-    }
-
-    res.send(product);
-  } catch (e) {
-    res.status(400).send(e);
-  }
-});
+router.patch("/products/:id", isAdmin, productController.updateProduct);
 
 // Delete Product
 
-router.delete("/products/:id", isAdmin, async (req, res) => {
-  try {
-    const product = await Product.findByIdAndDelete(req.params.id);
+router.delete("/products/:id", isAdmin, productController.deleteProduct);
 
-    if (!product) {
-      return res.status(404).send();
-    }
-
-    res.send("Product deleted....");
-  } catch (e) {
-    res.status(500).send(e);
-  }
+// Product Profile Pic
+const upload = multer({
+    limits: {
+        fileSize: 20000,
+    },
+    fileFilter(req, file, cb) {
+        if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
+            return cb(new Error("Please upload a photo"));
+        }
+        cb(undefined, true);
+    },
 });
+
+// Upload Pic
+router.post(
+    "/products/pic",
+    isAdmin,
+    upload.single("pic"),
+    async (req, res) => {
+        const buffer = await sharp(req.file.buffer)
+            .resize({ width: 250, height: 250 })
+            .png()
+            .toBuffer();
+
+        req.product.pic = buffer;
+        await req.product.save();
+        res.send();
+    },
+    (error, req, res, next) => {
+        res.status(400).send({ error: error.message });
+    }
+);
+
+// Delete Pic
+router.delete("/products/pic", isAdmin, productController.deleteProductPic);
+
+// View pic by id
+router.get("/products/:id/pic", productController.viewProductPicById);
 
 module.exports = router;

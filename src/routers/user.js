@@ -1,6 +1,6 @@
 const express = require("express");
 const router = new express.Router();
-const User = require("../models/User");
+const userController = require("../controllers/user-controller");
 const cors = require("cors");
 const { auth, isAdmin } = require("../middleware/auth");
 const multer = require("multer");
@@ -13,125 +13,34 @@ router.use(
 );
 
 // Create User
-router.post("/users", async (req, res) => {
-    const user = new User(req.body);
-
-    try {
-        await user.save();
-        const token = await user.generateAuthToken();
-        res.status(201).send({ user, token });
-    } catch (e) {
-        res.status(400).send(e);
-    }
-});
+router.post("/users", userController.addUser);
 
 // Login User
-router.post("/users/login", async (req, res) => {
-    try {
-        const user = await User.findByCredentials(
-            req.body.username,
-            req.body.password
-        );
-        const token = await user.generateAuthToken();
-        res.send({ user: user, token });
-    } catch (e) {
-        res.status(400).send(e);
-    }
-});
+router.post("/users/login", userController.loginUser);
 
 // Logout User
-router.post("/users/logout", auth, async (req, res) => {
-    try {
-        req.user.tokens = req.user.tokens.filter((token) => {
-            return token.token !== req.token;
-        });
-        await req.user.save();
-
-        res.send();
-    } catch (e) {
-        res.status(500).send(e);
-    }
-});
+router.post("/users/logout", auth, userController.logoutUser);
 
 // Logout All
-router.post("/users/logoutAll", auth, async (req, res) => {
-    try {
-        req.user.tokens = [];
-        await req.user.save();
-        res.send();
-    } catch (e) {
-        res.status(500).send();
-    }
-});
+router.post("/users/logoutAll", isAdmin, userController.logoutAll);
 
-// View Profile
-router.get("/users/me", auth, async (req, res) => {
-    res.send(req.user);
-});
+// View Data
+router.get("/users/me", auth, userController.viewData);
 
 // Update User
-router.patch("/users/me", auth, async (req, res) => {
-    const updates = Object.keys(req.body);
-    const allowedUpdates = ["username", "password"];
-    const isValidOpration = updates.every((update) =>
-        allowedUpdates.includes(update)
-    );
-
-    if (!isValidOpration) {
-        return res.status(400).send({ error: "Invalid updates!" });
-    }
-
-    try {
-        updates.forEach((update) => (req.user[update] = req.body[update]));
-
-        await req.user.save();
-        res.status(201).send(req.user);
-    } catch (e) {
-        res.status(400).send(e);
-    }
-});
+router.patch("/users/me", auth, userController.updateUser);
 
 // Delete Users
-router.delete("/users/me", auth, async (req, res) => {
-    try {
-        await req.user.remove();
-        res.send("User deleted....");
-    } catch (e) {
-        res.status(500).send(e);
-    }
-});
+router.delete("/users/me", auth, userController.deleteUser);
 
 //GET USER STATS
 
-router.get("/status", isAdmin, async (req, res) => {
-    const date = new Date();
-    const lastYear = new Date(date.setFullYear(date.getFullYear() - 1));
-
-    try {
-        const data = await User.aggregate([
-            { $match: { createdAt: { $gte: lastYear } } },
-            {
-                $project: {
-                    month: { $month: "$createdAt" },
-                },
-            },
-            {
-                $group: {
-                    _id: "$month",
-                    total: { $sum: 1 },
-                },
-            },
-        ]);
-        res.status(200).send(data);
-    } catch (err) {
-        res.status(500).send(err);
-    }
-});
+router.get("/status", isAdmin, userController.userStatus);
 
 // User Profile Pic
 const upload = multer({
     limits: {
-        fileSize: 2000000,
+        fileSize: 20000,
     },
     fileFilter(req, file, cb) {
         if (!file.originalname.match(/\.(jpg|jpeg|png)$/)) {
@@ -162,25 +71,9 @@ router.post(
 );
 
 // Delete Pic
-router.delete("/users/me/pic", auth, async (req, res) => {
-    req.user.pic = undefined;
-    await req.user.save();
-    res.send();
-});
+router.delete("/users/me/pic", auth, userController.deletePic);
 
 // View pic by id
-router.get("/users/:id/pic", async (req, res) => {
-    try {
-        const user = await User.findById(req.params.id);
-
-        if (!user || !user.pic) {
-            throw new Error();
-        }
-        res.set("Content-Type", "image/png");
-        res.send(user.pic);
-    } catch (e) {
-        res.status(404).send();
-    }
-});
+router.get("/users/:id/pic", userController.viewPic);
 
 module.exports = router;
